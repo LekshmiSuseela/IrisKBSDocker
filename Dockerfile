@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the app and model
 COPY app.py .
-COPY model.pkl .
+COPY model.joblib .
 
 # Expose the Flask port
 EXPOSE 5000
