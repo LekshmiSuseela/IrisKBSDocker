@@ -33,27 +33,54 @@ jobs:
 
       # Step 4: Configure Docker to use Artifact Registry
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+        run: |
+          echo "🧩 Configuring Docker authentication for region: ${{ secrets.GCP_REGION }}"
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+          echo "✅ Docker configured successfully."
 
       # Step 5: Build Docker Image
       - name: Build Docker Image
         run: |
+          echo "🔨 Building Docker image..."
+          echo "Image tag: $GAR_LOCATION:${{ github.sha }}"
           docker build -t $GAR_LOCATION:${{ github.sha }} .
+          echo "✅ Docker image built successfully."
 
       # Step 6: Push Docker Image
       - name: Push Docker Image
         run: |
+          echo "🚀 Pushing image to Artifact Registry..."
+          echo "Image: $GAR_LOCATION:${{ github.sha }}"
           docker push $GAR_LOCATION:${{ github.sha }}
+          echo "✅ Image pushed successfully."
 
       # Step 7: Get GKE credentials
       - name: Get GKE credentials
         run: |
+          echo "🎯 Getting GKE credentials..."
+          echo "Cluster: ${{ secrets.GKE_CLUSTER }}, Zone: ${{ secrets.GKE_ZONE }}"
           gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} \
             --zone ${{ secrets.GKE_ZONE }} \
             --project ${{ secrets.GCP_PROJECT_ID }}
+          echo "✅ GKE credentials configured successfully."
+          kubectl config current-context
 
-      # Step 8: Deploy to GKE
+      # Step 8: Verify Kubernetes connection
+      - name: Verify Kubernetes Context
+        run: |
+          echo "🔍 Verifying Kubernetes connection..."
+          kubectl get nodes || (echo "❌ Failed to connect to GKE cluster" && exit 1)
+          kubectl get ns
+          echo "✅ Kubernetes cluster reachable."
+
+      # Step 9: Deploy to GKE
       - name: Deploy to GKE
         run: |
-          kubectl set image deployment/iris-api iris-api=$GAR_LOCATION:${{ github.sha }} --namespace=default
-          kubectl rollout status deployment/iris-api --namespace=default
+          echo "🚢 Deploying image to GKE..."
+          echo "Updating deployment: iris-api with image: $GAR_LOCATION:${{ github.sha }}"
+          kubectl set image deployment/iris-api iris-api=$GAR_LOCATION:${{ github.sha }} --namespace=default || (echo "❌ Failed to update image" && exit 1)
+          
+          echo "⏳ Waiting for rollout to complete..."
+          kubectl rollout status deployment/iris-api --namespace=default || (echo "❌ Rollout failed" && exit 1)
+
+          echo "✅ Deployment successful!"
