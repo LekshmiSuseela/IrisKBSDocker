@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for IRIS (debug)
+name: CI/CD Pipeline for IRIS API
 
 on:
   push:
@@ -14,64 +14,94 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧾 Print Context Info
-        run: |
-          echo "✅ Workflow triggered on branch: ${{ github.ref }}"
-          echo "Repo: ${{ github.repository }}"
-          echo "Commit: ${{ github.sha }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Working directory:"
-          pwd
-          echo "Files:"
-          ls -al
+      # Step 1: Start
+      - name: ✅ Workflow started
+        run: echo "🚀 CI/CD triggered on branch ${{ github.ref }}"
 
-      - name: 🧩 Debug Secret Existence
-        run: |
-          echo "Checking for required secrets..."
-          if [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then echo "❌ Missing GCP_PROJECT_ID"; exit 1; fi
-          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then echo "❌ Missing GCP_SA_KEY"; exit 1; fi
-          if [ -z "${{ secrets.GCP_REGION }}" ]; then echo "❌ Missing GCP_REGION"; exit 1; fi
-          if [ -z "${{ secrets.GKE_CLUSTER }}" ]; then echo "❌ Missing GKE_CLUSTER"; exit 1; fi
-          if [ -z "${{ secrets.GKE_ZONE }}" ]; then echo "❌ Missing GKE_ZONE"; exit 1; fi
-          echo "✅ All required secrets appear to exist."
+      # Step 2: Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: 🔐 Authenticate to Google Cloud
+      # Step 3: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: ☁️ Setup gcloud CLI
+      # Step 4: Verify Authentication
+      - name: 🔍 Verify GCP Authentication
+        run: |
+          echo "Checking gcloud authentication..."
+          gcloud auth list
+          echo "Current GCP project config:"
+          gcloud config list project
+
+      # 🧪 Step 5: Sanity Checks
+      - name: 🧪 Sanity Checks (Environment)
+        run: |
+          echo "==> Sanity Check: Printing environment variables"
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "GCP Project: ${{ secrets.GCP_PROJECT_ID }}"
+          echo "GCP Region: ${{ secrets.GCP_REGION }}"
+          echo "GKE Cluster: ${{ secrets.GKE_CLUSTER }}"
+          echo "Zone: ${{ secrets.GKE_ZONE }}"
+          echo "Docker Image will be: $GAR_LOCATION:${{ github.sha }}"
+          echo "✅ Sanity check passed if above values are non-empty."
+
+      # Step 6: Setup gcloud CLI
+      - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: 🐳 Configure Docker for Artifact Registry
+      # Step 7: Configure Docker
+      - name: Configure Docker
         run: |
-          set -x
+          echo "🔧 Configuring Docker to use Artifact Registry..."
           gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: 🧱 Build Docker Image
+      # Step 8: Build Docker Image
+      - name: 🏗️ Build Docker Image
         run: |
-          set -x
-          echo "Building Docker image..."
+          echo "🛠️ Building Docker image..."
           docker build -t $GAR_LOCATION:${{ github.sha }} .
 
+      # Step 9: Push Docker Image
       - name: 🚀 Push Docker Image
         run: |
-          set -x
+          echo "📦 Pushing image to Artifact Registry..."
           docker push $GAR_LOCATION:${{ github.sha }}
 
-      - name: ☸️ Get GKE Credentials
+      # Step 10: Connect to GKE
+      - name: 🔑 Get GKE Credentials
         run: |
-          set -x
+          echo "🔗 Fetching GKE credentials..."
           gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} \
             --zone ${{ secrets.GKE_ZONE }} \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: 🧩 Deploy to GKE
+      # Step 11: Sanity Check (Cluster)
+      - name: 🧪 Sanity Check (GKE Connectivity)
         run: |
-          set -x
-          echo "Deploying to GKE..."
+          echo "🔍 Verifying connection to GKE..."
+          kubectl cluster-info
+          echo "Listing existing deployments..."
+          kubectl get deployments --namespace=default || echo "⚠️ No deployments found yet"
+          echo "✅ Cluster connection successful if above shows info."
+
+      # Step 12: Deploy to GKE
+      - name: 🌐 Deploy to GKE
+        run: |
+          echo "🚀 Updating deployment image..."
           kubectl set image deployment/iris-api iris-api=$GAR_LOCATION:${{ github.sha }} --namespace=default
+          echo "🕒 Waiting for rollout to complete..."
           kubectl rollout status deployment/iris-api --namespace=default
+
+      # Step 13: Post-deploy verification
+      - name: ✅ Verify Deployment
+        run: |
+          echo "🔍 Checking running pods and services..."
+          kubectl get pods --namespace=default
+          kubectl get svc --namespace=default
+          echo "🎉 Deployment successful!"
