@@ -43,7 +43,7 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      # Step 6: Install GKE Auth Plugin (FIXED)
+      # Step 6: Install GKE Auth Plugin
       - name: 🧩 Install GKE Auth Plugin
         run: |
           echo "🔧 Installing GKE gcloud auth plugin..."
