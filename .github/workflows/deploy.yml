@@ -106,3 +106,86 @@ jobs:
           kubectl get pods --namespace=default
           kubectl get svc --namespace=default
           echo "🎉 Deployment successful!"
+
+      # Step 14: 🔬 Install wrk for stress testing
+      - name: 🔧 Install wrk for stress testing
+        run: |
+          echo "📦 Installing wrk..."
+          sudo apt-get update -y
+          sudo apt-get install -y wrk
+          echo "✅ wrk installed successfully."
+
+      # Step 15: 📈 Run stress test with 1000 concurrent requests
+      - name: 🚀 Run wrk stress test (1000 concurrent)
+        run: |
+          echo "🚀 Starting load test with wrk..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "🌐 Testing endpoint: http://$EXTERNAL_IP/predict"
+
+          # Create Lua script for POST request
+          cat <<'EOF' > post.lua
+          wrk.method = "POST"
+          wrk.body   = '{"features": [5.1, 3.5, 1.4, 0.2]}'
+          wrk.headers["Content-Type"] = "application/json"
+          EOF
+
+          # Run load test
+          wrk -t8 -c1000 -d30s -s post.lua http://$EXTERNAL_IP/predict
+
+      # Step 16: 🧩 Apply Horizontal Pod Autoscaler (HPA)
+      - name: ⚙️ Apply HPA for autoscaling
+        run: |
+          echo "📈 Applying Horizontal Pod Autoscaler..."
+          cat <<'EOF' > hpa.yaml
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: iris-api-hpa
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: iris-api
+            minReplicas: 1
+            maxReplicas: 3
+            metrics:
+              - type: Resource
+                resource:
+                  name: cpu
+                  target:
+                    type: Utilization
+                    averageUtilization: 70
+          EOF
+
+          kubectl apply -f hpa.yaml
+          echo "✅ HPA applied successfully."
+          kubectl get hpa
+
+      # Step 17: 🔍 Observe scaling behavior
+      - name: 🔍 Observe scaling under load
+        run: |
+          echo "🧪 Running load test to trigger scaling..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "🌐 Testing endpoint: http://$EXTERNAL_IP/predict"
+
+          # Run longer stress test to trigger autoscaling
+          wrk -t8 -c1500 -d60s -s post.lua http://$EXTERNAL_IP/predict
+
+          echo "📊 Current pod and HPA status:"
+          kubectl get hpa
+          kubectl get pods -o wide
+
+      # Step 18: 🧱 Bottleneck analysis (when scaling disabled)
+      - name: 🧱 Stress test with fixed 1 pod (bottleneck observation)
+        run: |
+          echo "🚫 Restricting autoscaling to 1 pod..."
+          kubectl delete hpa iris-api-hpa || true
+          kubectl scale deployment iris-api --replicas=1
+
+          echo "🚀 Running stress test with 2000 concurrent requests..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          wrk -t8 -c2000 -d45s -s post.lua http://$EXTERNAL_IP/predict
+
+          echo "📊 Checking resource usage:"
+          kubectl top pods || echo "⚠️ Metrics server may not be installed"
+
