@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: iris-api
 spec:
-  replicas: 1   # default replica count (HPA will handle scaling)
+  replicas: 1   # Start with one pod (HPA will scale up to 3)
   selector:
     matchLabels:
       app: iris-api
@@ -15,30 +15,48 @@ spec:
       containers:
         - name: iris-api
           image: us-central1-docker.pkg.dev/mlops-474118/iris-api-repo/iris-api:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
 
-          # ✅ Add resource requests/limits (HPA needs these)
-          resources:
-            requests:
-              cpu: "100m"         # baseline CPU needed
-              memory: "128Mi"
-            limits:
-              cpu: "500m"         # HPA uses this limit for scaling thresholds
-              memory: "256Mi"
-
-          # ✅ Add basic health probes (recommended for scaling + stability)
+          # ✅ Probes updated to use /predict
           readinessProbe:
             httpGet:
-              path: /health
+              path: /predict
               port: 5000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
 
           livenessProbe:
             httpGet:
-              path: /health
+              path: /predict
               port: 5000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
 
+          # ✅ Resource requests/limits help prevent “Insufficient CPU” errors
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: iris-api
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
