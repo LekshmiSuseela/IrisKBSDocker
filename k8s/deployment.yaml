@@ -22,7 +22,7 @@ spec:
           # ✅ Probes updated to use /predict
           readinessProbe:
             httpGet:
-              path: /predict
+              path: /health
               port: 5000
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -31,7 +31,7 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /predict
+              path: /health
               port: 5000
             initialDelaySeconds: 20
             periodSeconds: 20
