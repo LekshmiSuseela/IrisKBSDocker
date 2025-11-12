@@ -42,5 +42,3 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
 
-      # (Optional) Add imagePullPolicy if images are frequently updated
-      imagePullPolicy: Always
