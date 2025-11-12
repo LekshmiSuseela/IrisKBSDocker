@@ -19,6 +19,10 @@ except Exception as e:
 def home():
     return jsonify({"message": "IRIS Prediction API is running!"})
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "healthy"}), 200
+
 @app.route('/predict', methods=['POST'])
 def predict():
     if model is None:
