@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import joblib
 import numpy as np
 import mlflow.pyfunc
+import os
 
 app = Flask(__name__)
 
@@ -9,8 +10,9 @@ app = Flask(__name__)
 MODEL_PATH = "model.joblib"
 
 try:
-    model = joblib.load(MODEL_PATH)
-    print("✅ Model loaded successfully from model.joblib")
+    model_path = os.path.join(os.getcwd(), "model.joblib")
+    model = joblib.load(model_path)
+    print(f"✅ Model loaded successfully from {model_path}")
 except Exception as e:
     print(f"⚠️ Failed to load model: {e}")
     model = None
