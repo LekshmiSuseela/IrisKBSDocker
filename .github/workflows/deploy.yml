@@ -83,13 +83,12 @@ jobs:
             --zone ${{ secrets.GKE_ZONE }} \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
-      # Step 11: Sanity Check (GKE)
-      - name: 🧪 Sanity Check (GKE Connectivity)
+      # Step 11: Install Metrics Server
+      - name: 🖥️ Install Metrics Server
         run: |
-          echo "🔍 Verifying connection to GKE..."
-          kubectl cluster-info
-          kubectl get nodes
-          echo "✅ Cluster connection successful."
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl wait --for=condition=available --timeout=120s deployment/metrics-server -n kube-system
+
 
       # Step 12: Deploy to GKE
       - name: 🌐 Deploy to GKE
