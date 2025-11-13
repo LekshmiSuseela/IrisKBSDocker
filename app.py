@@ -6,7 +6,7 @@ import mlflow.pyfunc
 app = Flask(__name__)
 
 # Load the model (replace with MLflow model if using registry)
-MODEL_PATH = "model.pkl"
+MODEL_PATH = "model.joblib"
 
 try:
     model = joblib.load(MODEL_PATH)
