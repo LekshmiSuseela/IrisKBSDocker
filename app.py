@@ -10,7 +10,7 @@ MODEL_PATH = "model.joblib"
 
 try:
     model = joblib.load(MODEL_PATH)
-    print("✅ Model loaded successfully from model.pkl")
+    print("✅ Model loaded successfully from model.joblib")
 except Exception as e:
     print(f"⚠️ Failed to load model: {e}")
     model = None
