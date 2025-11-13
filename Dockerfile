@@ -1,15 +1,11 @@
-FROM python:3.10-slim
-
+FROM python:3.12-slim   # ⬅️ updated
 WORKDIR /app
 
-# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
 COPY app.py .
 COPY model.joblib .
 
 EXPOSE 5000
-
 CMD ["python", "app.py"]
