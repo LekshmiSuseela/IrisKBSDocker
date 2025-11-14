@@ -54,6 +54,14 @@ jobs:
           kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
           kubectl wait --for=condition=available --timeout=120s deployment/metrics-server -n kube-system
 
+      - name: Check external IP
+        run: |
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          if [ -z "$EXTERNAL_IP" ]; then
+            echo "Service not ready. Exiting..."
+            exit 1
+          fi
+
       - name: Run poisoned training (MLFlow)
         run: |
           export MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}
