@@ -32,6 +32,12 @@ jobs:
           gcloud components install gke-gcloud-auth-plugin --quiet
           export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 
+      - name: 🔑 Get GKE Credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} \
+            --zone ${{ secrets.GKE_ZONE }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
       - name: Install Metrics Server
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
