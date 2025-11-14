@@ -1,102 +1,140 @@
 name: CI/CD Pipeline for IRIS API
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
 env:
   IMAGE_NAME: iris-api
   GAR_LOCATION: us-central1-docker.pkg.dev/mlops-474118/iris-api-repo/iris-api
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      # Checkout repository
+      # Step 1: Start
+      - name: ✅ Workflow started
+        run: echo "🚀 CI/CD triggered on branch ${{ github.ref }}"
+
+      # Step 2: Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Authenticate to GCP
-      - name: Authenticate to GCP
+      # Step 3: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Setup gcloud CLI
+      # Step 4: Verify Authentication
+      - name: 🔍 Verify GCP Authentication
+        run: |
+          echo "Checking gcloud authentication..."
+          gcloud auth list
+          echo "Current GCP project config:"
+          gcloud config list project
+
+      # Step 5: Setup gcloud CLI
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      # Install GKE Auth Plugin
-      - name: Install GKE Auth Plugin
+      # Step 6: Install GKE Auth Plugin
+      - name: 🧩 Install GKE Auth Plugin
         run: |
-          gcloud components update --quiet
-          gcloud components install gke-gcloud-auth-plugin --quiet
-          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+          echo "🔧 Installing GKE gcloud auth plugin..."
+          sudo apt-get update -y
+          sudo apt-get install -y apt-transport-https ca-certificates gnupg
+          echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | \
+            sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+          curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+            sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+          sudo apt-get update -y
+          sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+          echo "✅ Plugin installed successfully."
 
-      # Get GKE credentials
-      - name: Get GKE Credentials
+      # Step 7: Configure Docker
+      - name: Configure Docker
         run: |
+          echo "🔧 Configuring Docker to use Artifact Registry..."
+          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
+
+      # Step 8: Build Docker Image
+      - name: 🏗️ Build Docker Image
+        run: |
+          echo "🛠️ Building Docker image..."
+          docker build -t $GAR_LOCATION:${{ github.sha }} .
+
+      # Step 9: Push Docker Image
+      - name: 🚀 Push Docker Image
+        run: |
+          echo "📦 Pushing image to Artifact Registry..."
+          docker push $GAR_LOCATION:${{ github.sha }}
+
+      # Step 10: Connect to GKE
+      - name: 🔑 Get GKE Credentials
+        run: |
+          echo "🔗 Fetching GKE credentials..."
           gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} \
             --zone ${{ secrets.GKE_ZONE }} \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
-      # Setup Python
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      # Install Python dependencies
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # Install Metrics Server
-      - name: Install Metrics Server
+      # Step 11: Install Metrics Server
+      - name: 🖥️ Install Metrics Server
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
           kubectl wait --for=condition=available --timeout=120s deployment/metrics-server -n kube-system
 
-      # Run poisoned training with MLFlow
-      - name: Run poisoned training (MLFlow)
-        run: |
-          export MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}
-          python train.py
 
-      # Build and push Docker image
-      - name: Build & push Docker image
+      # Step 12: Deploy to GKE
+      - name: 🌐 Deploy to GKE
         run: |
-          gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
-          docker build -t $GAR_LOCATION:${{ github.sha }} .
-          docker push $GAR_LOCATION:${{ github.sha }}
-
-      # Deploy to GKE and patch resources
-      - name: Deploy to GKE with resources
-        run: |
+          echo "🚀 Updating deployment image..."
           kubectl set image deployment/iris-api iris-api=$GAR_LOCATION:${{ github.sha }} --namespace=default
+          echo "🕒 Waiting for rollout to complete..."
           kubectl rollout status deployment/iris-api --namespace=default
 
-          # Patch deployment to add CPU/memory requests and limits
-          kubectl patch deployment iris-api -n default -p '{
-            "spec": {
-              "template": {
-                "spec": {
-                  "containers": [{
-                    "name": "iris-api",
-                    "resources": {
-                      "requests": {"cpu": "500m","memory": "128Mi"},
-                      "limits": {"cpu": "1","memory": "256Mi"}
-                    }
-                  }]
-                }
-              }
-            }
-          }'
-          echo "✅ Resources applied to iris-api"
-
-      # Apply Horizontal Pod Autoscaler
-      - name: Apply HPA
+      # Step 13: Post-deploy verification
+      - name: ✅ Verify Deployment
         run: |
+          echo "🔍 Checking running pods and services..."
+          kubectl get pods --namespace=default
+          kubectl get svc --namespace=default
+          echo "🎉 Deployment successful!"
+
+      # Step 14: 🔬 Install wrk for stress testing
+      - name: 🔧 Install wrk for stress testing
+        run: |
+          echo "📦 Installing wrk..."
+          sudo apt-get update -y
+          sudo apt-get install -y wrk
+          echo "✅ wrk installed successfully."
+
+      # Step 15: 📈 Run stress test with 1000 concurrent requests
+      - name: 🚀 Run wrk stress test (1000 concurrent)
+        run: |
+          echo "🚀 Starting load test with wrk..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "🌐 Testing endpoint: http://$EXTERNAL_IP/predict"
+
+          # Create Lua script for POST request
+          cat <<'EOF' > post.lua
+          wrk.method = "POST"
+          wrk.body   = '{"features": [5.1, 3.5, 1.4, 0.2]}'
+          wrk.headers["Content-Type"] = "application/json"
+          EOF
+
+          # Run load test
+          wrk -t8 -c1000 -d30s -s post.lua http://$EXTERNAL_IP/predict
+
+      # Step 16: 🧩 Apply Horizontal Pod Autoscaler (HPA)
+      - name: ⚙️ Apply HPA for autoscaling
+        run: |
+          echo "📈 Applying Horizontal Pod Autoscaler..."
           cat <<'EOF' > hpa.yaml
           apiVersion: autoscaling/v2
           kind: HorizontalPodAutoscaler
@@ -117,48 +155,36 @@ jobs:
                     type: Utilization
                     averageUtilization: 70
           EOF
+
           kubectl apply -f hpa.yaml
+          echo "✅ HPA applied successfully."
+          kubectl get hpa
 
-      # Install wrk and run stress tests
-      - name: Install wrk & run stress tests
+      # Step 17: 🔍 Observe scaling behavior
+      - name: 🔍 Observe scaling under load
         run: |
-          sudo apt-get update -y && sudo apt-get install -y wrk
+          echo "🧪 Running load test to trigger scaling..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "🌐 Testing endpoint: http://$EXTERNAL_IP/predict"
 
-          # Wait for service external IP
-          EXTERNAL_IP=""
-          for i in {1..30}; do
-            EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            if [ -n "$EXTERNAL_IP" ]; then
-              echo "Service ready at $EXTERNAL_IP"
-              break
-            fi
-            echo "Waiting for service external IP..."
-            sleep 10
-          done
-          if [ -z "$EXTERNAL_IP" ]; then
-            echo "ERROR: Service did not get an external IP"
-            exit 1
-          fi
-          echo "🌐 Endpoint: http://$EXTERNAL_IP/predict"
-
-          # Lua POST script for wrk
-          cat <<'EOF' > post.lua
-          wrk.method = "POST"
-          wrk.body = '{"features": [5.1, 3.5, 1.4, 0.2]}'
-          wrk.headers["Content-Type"] = "application/json"
-          EOF
-
-          # Run wrk stress tests
-          echo "Running stress test: 1000 connections"
-          wrk -t8 -c1000 -d30s -s post.lua http://$EXTERNAL_IP/predict
-
-          echo "Running stress test: 1500 connections (observe scaling)"
+          # Run longer stress test to trigger autoscaling
           wrk -t8 -c1500 -d60s -s post.lua http://$EXTERNAL_IP/predict
 
-          echo "Running stress test: 2000 connections (1 pod bottleneck)"
+          echo "📊 Current pod and HPA status:"
+          kubectl get hpa
+          kubectl get pods -o wide
+
+      # Step 18: 🧱 Bottleneck analysis (when scaling disabled)
+      - name: 🧱 Stress test with fixed 1 pod (bottleneck observation)
+        run: |
+          echo "🚫 Restricting autoscaling to 1 pod..."
           kubectl delete hpa iris-api-hpa || true
           kubectl scale deployment iris-api --replicas=1
+
+          echo "🚀 Running stress test with 2000 concurrent requests..."
+          EXTERNAL_IP=$(kubectl get svc iris-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
           wrk -t8 -c2000 -d45s -s post.lua http://$EXTERNAL_IP/predict
 
-          # Show pod metrics
+          echo "📊 Checking resource usage:"
           kubectl top pods || echo "⚠️ Metrics server may not be installed"
+
