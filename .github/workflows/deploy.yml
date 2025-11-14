@@ -1,17 +1,13 @@
 name: CI/CD Pipeline for IRIS API
-
 on:
   push:
     branches: [main]
-
 env:
   IMAGE_NAME: iris-api
   GAR_LOCATION: us-central1-docker.pkg.dev/mlops-474118/iris-api-repo/iris-api
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       # Checkout repository
       - name: Checkout repository
